@@ -10,11 +10,27 @@ extern "C" {
 #define D0 16
 #define D1 5
 #define D2 4
+#define D3 0
+#define D4 2
+#define D5 14
+#define D6 12
+
+#define PIN_G D3
+#define PIN_R D4
+#define PIN_W D5
+#define PIN_B D6
 
 #define MAX_CONNECTIONS 16
 
-const char* ssid = "WLAN-8XJGHP";
-const char* password = "7653308624866630";
+#include "private.h"
+
+#ifndef ssid
+    #error "private.h should define a macro called ssid"
+#endif
+
+#ifndef password
+    #error "private.h should define a macro called password"
+#endif
 
 WiFiServer wifiServer(1337);
 void (*currentSpecialMode)(void) = 0;
@@ -26,6 +42,10 @@ void setup() {
     pinMode(D0, OUTPUT);
     pinMode(D1, OUTPUT);
     pinMode(D2, OUTPUT);
+    pinMode(PIN_R, INPUT_PULLUP);
+    pinMode(PIN_G, INPUT_PULLUP);
+    pinMode(PIN_B, INPUT_PULLUP);
+    pinMode(PIN_W, INPUT_PULLUP);
     setColor(1023,0,0);
 
     Serial.begin(115200);
@@ -69,6 +89,49 @@ void loop() {
 
     if (currentSpecialMode) {
         currentSpecialMode();
+    }
+
+    handleButtons();
+}
+
+bool isEdge(int pin, bool *lastState, long *lastEdge) {
+    bool state = digitalRead(pin);
+    long t = millis();
+    if (state != *lastState) {
+        bool isRealEdge = (*lastEdge < t - 100);
+        *lastState = state;
+        *lastEdge = t;
+        return isRealEdge;
+    } else {
+        return false;
+    }
+}
+
+void handleButtons() {
+    static long lastEdgeR = 0, lastEdgeG = 0, lastEdgeB = 0, lastEdgeW = 0;
+    static bool lastStateR = digitalRead(PIN_R);
+    static bool lastStateG = digitalRead(PIN_G);
+    static bool lastStateB = digitalRead(PIN_B);
+    static bool lastStateW = digitalRead(PIN_W);
+
+    if (isEdge(PIN_R, &lastStateR, &lastEdgeR) && lastStateR) {
+        setColor(1023, 0, 0);
+        Serial.println("Set R");
+    }
+
+    if (isEdge(PIN_G, &lastStateG, &lastEdgeG) && lastStateG) {
+        setColor(0, 1023, 0);
+        Serial.println("Set G");
+    }
+
+    if (isEdge(PIN_B, &lastStateB, &lastEdgeB) && lastStateB) {
+        setColor(0, 0, 1023);
+        Serial.println("Set B");
+    }
+
+    if (isEdge(PIN_W, &lastStateW, &lastEdgeW) && lastStateW) {
+        setColor(0, 0, 0);
+        Serial.println("Clear");
     }
 }
 
@@ -172,4 +235,3 @@ void fade() {
         fadeTicks = (fadeTicks+1) % (1024*3);
     }
 }
-
