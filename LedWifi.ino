@@ -4,7 +4,7 @@
 #include <ArduinoOTA.h>
 
 extern "C" {
-#include "rc_lib.h"
+    #include "rc_lib.h"
 }
 
 #define D0 16
@@ -117,21 +117,25 @@ void handleButtons() {
     if (isEdge(PIN_R, &lastStateR, &lastEdgeR) && lastStateR) {
         setColor(1023, 0, 0);
         Serial.println("Set R");
+        currentSpecialMode = 0;
     }
 
     if (isEdge(PIN_G, &lastStateG, &lastEdgeG) && lastStateG) {
         setColor(0, 1023, 0);
         Serial.println("Set G");
+        currentSpecialMode = 0;
     }
 
     if (isEdge(PIN_B, &lastStateB, &lastEdgeB) && lastStateB) {
         setColor(0, 0, 1023);
         Serial.println("Set B");
+        currentSpecialMode = 0;
     }
 
     if (isEdge(PIN_W, &lastStateW, &lastEdgeW) && lastStateW) {
         setColor(0, 0, 0);
         Serial.println("Clear");
+        currentSpecialMode = 0;
     }
 }
 
