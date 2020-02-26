@@ -20,8 +20,6 @@ extern "C" {
 #define PIN_W D5
 #define PIN_B D6
 
-#define MAX_CONNECTIONS 16
-
 #include "private.h"
 
 #ifndef ssid
@@ -37,6 +35,8 @@ void (*currentSpecialMode)(void) = 0;
 
 int wakeupTicks = 0;
 int fadeTicks = 0;
+
+rc_lib_package_t pkg;
 
 void setup() {
     pinMode(D0, OUTPUT);
@@ -56,6 +56,8 @@ void setup() {
     IPAddress subnet(255,255,255,0);   
     WiFi.config(ip, gateway, subnet);
 
+    Serial.println();
+
     while (WiFi.status() != WL_CONNECTED) {
         delay(1000);
         Serial.println("Connecting..");
@@ -66,25 +68,30 @@ void setup() {
 
     wifiServer.begin();
     setColor(0,1023,0);
+    rc_lib_init_rx(&pkg);
 }
 
 void loop() {
-    static rc_lib_package_t pkg;
-    rc_lib_init_rx(&pkg);
+    if (WiFi.status() == WL_CONNECTED) {
+        if (wifiServer.hasClient()) {
+            WiFiClient client = wifiServer.available();
 
-    if (wifiServer.hasClient()) {
-        WiFiClient client = wifiServer.available();
+            Serial.print("Available: ");
+            Serial.println(client.available());
 
-        while (client.connected()) {
-            while (client.connected() && client.available() > 0) {
-                Serial.println("Got data");
-                if (rc_lib_decode(&pkg, client.read())) {
-                    Serial.println("Got package");
-                    handlePackage(&pkg);
-                    client.stop();
+            while (client.connected() || client.available() > 0) {
+                if (client.available() > 0) {
+                  Serial.println("Got data");
+                  if (rc_lib_decode(&pkg, client.read())) {
+                      Serial.println("Got package");
+                      handlePackage(&pkg);
+                      client.stop();
+                  }
                 }
             }
         }
+    } else {
+      Serial.println("Not connected!");
     }
 
     if (currentSpecialMode) {
@@ -98,7 +105,7 @@ bool isEdge(int pin, bool *lastState, long *lastEdge) {
     bool state = digitalRead(pin);
     long t = millis();
     if (state != *lastState) {
-        bool isRealEdge = (*lastEdge < t - 100);
+        bool isRealEdge = (*lastEdge < t - 10);
         *lastState = state;
         *lastEdge = t;
         return isRealEdge;
@@ -115,9 +122,8 @@ void handleButtons() {
     static bool lastStateW = digitalRead(PIN_W);
 
     if (isEdge(PIN_R, &lastStateR, &lastEdgeR) && lastStateR) {
-        setColor(1023, 0, 0);
         Serial.println("Set R");
-        currentSpecialMode = 0;
+        currentSpecialMode = fade;
     }
 
     if (isEdge(PIN_G, &lastStateG, &lastEdgeG) && lastStateG) {
@@ -171,6 +177,7 @@ void specialPackage(uint8_t cmd) {
             fadeTicks = 0;
             currentSpecialMode = fade;
             break;
+        default: break;
     }
 }
 
