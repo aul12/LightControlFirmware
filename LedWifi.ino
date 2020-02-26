@@ -4,7 +4,7 @@
 #include <ArduinoOTA.h>
 
 extern "C" {
-    #include "rc_lib.h"
+#include "rc_lib.h"
 }
 
 #define D0 16
@@ -15,26 +15,33 @@ extern "C" {
 #define D5 14
 #define D6 12
 
-#define PIN_G D3
-#define PIN_R D4
-#define PIN_W D5
-#define PIN_B D6
+#define PIN_B2 D3
+#define PIN_B1 D4
+#define PIN_B4 D5
+#define PIN_B3 D6
 
 #include "private.h"
 
 #ifndef ssid
-    #error "private.h should define a macro called ssid"
+#error "private.h should define a macro called ssid"
 #endif
 
 #ifndef password
-    #error "private.h should define a macro called password"
+#error "private.h should define a macro called password"
 #endif
 
 WiFiServer wifiServer(1337);
 void (*currentSpecialMode)(void) = 0;
 
+struct ButtonState {
+    long lastEdge;
+    bool lastState;
+};
+
 int wakeupTicks = 0;
+
 int fadeTicks = 0;
+int fadeDelta = 2;
 
 rc_lib_package_t pkg;
 
@@ -42,10 +49,10 @@ void setup() {
     pinMode(D0, OUTPUT);
     pinMode(D1, OUTPUT);
     pinMode(D2, OUTPUT);
-    pinMode(PIN_R, INPUT_PULLUP);
-    pinMode(PIN_G, INPUT_PULLUP);
-    pinMode(PIN_B, INPUT_PULLUP);
-    pinMode(PIN_W, INPUT_PULLUP);
+    pinMode(PIN_B1, INPUT_PULLUP);
+    pinMode(PIN_B2, INPUT_PULLUP);
+    pinMode(PIN_B3, INPUT_PULLUP);
+    pinMode(PIN_B4, INPUT_PULLUP);
     setColor(1023,0,0);
 
     Serial.begin(115200);
@@ -81,17 +88,17 @@ void loop() {
 
             while (client.connected() || client.available() > 0) {
                 if (client.available() > 0) {
-                  Serial.println("Got data");
-                  if (rc_lib_decode(&pkg, client.read())) {
-                      Serial.println("Got package");
-                      handlePackage(&pkg);
-                      client.stop();
-                  }
+                    Serial.println("Got data");
+                    if (rc_lib_decode(&pkg, client.read())) {
+                        Serial.println("Got package");
+                        handlePackage(&pkg);
+                        client.stop();
+                    }
                 }
             }
         }
     } else {
-      Serial.println("Not connected!");
+        Serial.println("Not connected!");
     }
 
     if (currentSpecialMode) {
@@ -101,47 +108,52 @@ void loop() {
     handleButtons();
 }
 
-bool isEdge(int pin, bool *lastState, long *lastEdge) {
+bool isEdge(int pin, ButtonState *buttonState) {
     bool state = digitalRead(pin);
     long t = millis();
-    if (state != *lastState) {
-        bool isRealEdge = (*lastEdge < t - 10);
-        *lastState = state;
-        *lastEdge = t;
+    if (state != buttonState->lastState) {
+        bool isRealEdge = (buttonState->lastEdge < t - 10);
+        buttonState->lastState = state;
+        buttonState->lastEdge = t;
         return isRealEdge;
     } else {
         return false;
     }
 }
 
+bool isRisingEdge(int pin, ButtonState *buttonState) {
+    return isEdge(pin, buttonState) && buttonState->lastState; 
+}
+
 void handleButtons() {
-    static long lastEdgeR = 0, lastEdgeG = 0, lastEdgeB = 0, lastEdgeW = 0;
-    static bool lastStateR = digitalRead(PIN_R);
-    static bool lastStateG = digitalRead(PIN_G);
-    static bool lastStateB = digitalRead(PIN_B);
-    static bool lastStateW = digitalRead(PIN_W);
+    static ButtonState buttonStates[4] = {
+        {0, static_cast<bool>(digitalRead(PIN_B1))},
+        {0, static_cast<bool>(digitalRead(PIN_B2))},
+        {0, static_cast<bool>(digitalRead(PIN_B3))},
+        {0, static_cast<bool>(digitalRead(PIN_B4))}
+    };
 
-    if (isEdge(PIN_R, &lastStateR, &lastEdgeR) && lastStateR) {
-        Serial.println("Set R");
-        currentSpecialMode = fade;
-    }
-
-    if (isEdge(PIN_G, &lastStateG, &lastEdgeG) && lastStateG) {
-        setColor(0, 1023, 0);
-        Serial.println("Set G");
-        currentSpecialMode = 0;
-    }
-
-    if (isEdge(PIN_B, &lastStateB, &lastEdgeB) && lastStateB) {
-        setColor(0, 0, 1023);
-        Serial.println("Set B");
-        currentSpecialMode = 0;
-    }
-
-    if (isEdge(PIN_W, &lastStateW, &lastEdgeW) && lastStateW) {
+    if (isRisingEdge(PIN_B1, &buttonStates[0])) {
+        Serial.println("B1");
         setColor(0, 0, 0);
-        Serial.println("Clear");
         currentSpecialMode = 0;
+    }
+
+    if (isRisingEdge(PIN_B2, &buttonStates[1])) {
+        Serial.println("B2");
+        setColor(0, 1023, 0);
+        currentSpecialMode = 0;
+    }
+
+    if (isRisingEdge(PIN_B3, &buttonStates[2])) {
+        Serial.println("B3");
+        setColor(0, 0, 1023);
+        currentSpecialMode = 0;
+    }
+
+    if (isRisingEdge(PIN_B4, &buttonStates[3])) {
+        Serial.println("B4");
+        currentSpecialMode = fade;
     }
 }
 
@@ -163,11 +175,12 @@ void handlePackage(const rc_lib_package_t *pkg) {
         setColor(pkg->channel_data[1],pkg->channel_data[2],pkg->channel_data[3]);
     } else {
         Serial.println("Special package");
-        specialPackage(pkg->channel_data[0]);
+        specialPackage(pkg->channel_data[0], pkg->channel_data[1],
+                pkg->channel_data[2], pkg->channel_data[3]);
     }
 }
 
-void specialPackage(uint8_t cmd) {
+void specialPackage(uint8_t cmd, uint8_t data0, uint8_t data1, uint8_t data2) {
     switch(cmd) {
         case 1:
             wakeupTicks = 0;
@@ -175,6 +188,11 @@ void specialPackage(uint8_t cmd) {
             break;
         case 2:
             fadeTicks = 0;
+            if (data0 == 1) {
+                fadeDelta = data1;
+            } else {
+                fadeDelta = 2;
+            }
             currentSpecialMode = fade;
             break;
         default: break;
@@ -211,7 +229,7 @@ void wakeup() {
 void fade() {
     static unsigned int lastCall = millis();
 
-    if (millis() - lastCall > 2) {
+    if (millis() - lastCall > fadeDelta) {
         lastCall = millis();
         uint16_t r=0,g=0,b=0;
 
@@ -242,7 +260,7 @@ void fade() {
             }
         }
         setColor(r,g,b);
-        
+
         fadeTicks = (fadeTicks+1) % (1024*3);
     }
 }
