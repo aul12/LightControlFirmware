@@ -157,10 +157,19 @@ void handleButtons() {
     }
 }
 
+uint16_t gammaCorrect(uint16_t val, uint16_t maxIn, uint16_t maxOut) {
+    constexpr auto GAMMA = 2.8F;
+    constexpr auto DITHER_MAX_RAND = 1024;
+    // Dithering
+    float offset = random(DITHER_MAX_RAND) / static_cast<float>(DITHER_MAX_RAND);
+    Serial.println(offset);
+    return static_cast<uint16_t>(pow(static_cast<float>(val) / maxIn, GAMMA) * maxOut + offset);
+}
+
 void setColor(uint16_t r, uint16_t g, uint16_t b) {
-    analogWrite(D0, b);
-    analogWrite(D1, r);
-    analogWrite(D2, g);
+    analogWrite(D0, gammaCorrect(b, 1023, 1023));
+    analogWrite(D1, gammaCorrect(r, 1023, 900));
+    analogWrite(D2, gammaCorrect(g, 1023, 750));
 }
 
 void handlePackage(const rc_lib_package_t *pkg) {
