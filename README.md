@@ -22,3 +22,8 @@ The following commands are available:
 | 0 | Set color |
 | 1 | Sunrise animation |
 | 2 | Continuous Fade |
+
+## Clients
+ * [Android](https://github.com/aul12/LightControlAndroid)
+ * [Linux CLI](https://github.com/aul12/LightControlCLI)
+ * [Ambilight-Clone](https://github.com/aul12/LightControlAmbilight)
